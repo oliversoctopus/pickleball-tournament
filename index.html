@@ -690,17 +690,19 @@
         }
         
         function addHistoryItem(text) {
-            const historyList = document.getElementById('historyList');
-            const item = document.createElement('div');
-            item.className = 'history-item';
-            const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-            item.textContent = `${time} - ${text}`;
-            historyList.insertBefore(item, historyList.firstChild);
-            
-            // Keep only last 10 items
-            while (historyList.children.length > 10) {
-                historyList.removeChild(historyList.lastChild);
-            }
+            requestAnimationFrame(() => {
+                const historyList = document.getElementById('historyList');
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                item.textContent = `${time} - ${text}`;
+                historyList.insertBefore(item, historyList.firstChild);
+                
+                // Keep only last 10 items
+                while (historyList.children.length > 10) {
+                    historyList.removeChild(historyList.lastChild);
+                }
+            });
         }
     </script>
 </body>
