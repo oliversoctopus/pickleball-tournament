@@ -118,6 +118,20 @@
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
 
+        .scoring-info {
+            background: #f0f4ff;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        .scoring-info strong {
+            color: #667eea;
+        }
+
         .score-board {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -136,7 +150,7 @@
         }
 
         .team-card.serving::before {
-            content: '🏐';
+            content: '🏓';
             position: absolute;
             top: 10px;
             right: 10px;
@@ -442,6 +456,11 @@
                 font-size: 1rem;
                 margin-bottom: 20px;
             }
+
+            .scoring-info {
+                font-size: 0.8rem;
+                padding: 10px;
+            }
         }
     </style>
 </head>
@@ -462,6 +481,16 @@
                     <option value="15">Play to 15 (win by 2)</option>
                     <option value="21">Play to 21 (win by 2)</option>
                 </select>
+            </div>
+            
+            <label>Scoring System:</label>
+            <div class="toggle-group">
+                <button class="toggle-button active" data-scoring="sideout">Side-out Scoring</button>
+                <button class="toggle-button" data-scoring="rally">Rally Scoring</button>
+            </div>
+            
+            <div class="scoring-info" id="scoringInfo">
+                <strong>Side-out Scoring:</strong> Only the serving team can score points. If the receiving team wins the rally, they get the serve (side-out) but no point.
             </div>
             
             <label>Game Format:</label>
@@ -490,13 +519,13 @@
                 <div class="team-card" id="team1Card">
                     <div class="team-name" id="team1Display">Team 1</div>
                     <div class="score-display" id="team1Score">0</div>
-                    <button class="score-button" onclick="addPoint(1)">Point</button>
+                    <button class="score-button" onclick="addPoint(1)">Win Rally</button>
                 </div>
                 
                 <div class="team-card" id="team2Card">
                     <div class="team-name" id="team2Display">Team 2</div>
                     <div class="score-display" id="team2Score">0</div>
-                    <button class="score-button" onclick="addPoint(2)">Point</button>
+                    <button class="score-button" onclick="addPoint(2)">Win Rally</button>
                 </div>
             </div>
             
@@ -529,12 +558,33 @@
             servingTeam: 1,
             serverNumber: 1,
             gameFormat: 'singles',
+            scoringSystem: 'sideout',
             playTo: 11,
             history: [],
-            gameStarted: false
+            gameStarted: false,
+            rallyCount: 0
         };
         
-        // Setup event listeners
+        // Setup event listeners for scoring system
+        document.querySelectorAll('[data-scoring]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-scoring]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                gameState.scoringSystem = this.dataset.scoring;
+                updateScoringInfo();
+            });
+        });
+        
+        function updateScoringInfo() {
+            const infoDiv = document.getElementById('scoringInfo');
+            if (gameState.scoringSystem === 'rally') {
+                infoDiv.innerHTML = '<strong>Rally Scoring:</strong> A point is awarded on every rally to the winning team, regardless of who served. Service changes when the serving team loses a rally.';
+            } else {
+                infoDiv.innerHTML = '<strong>Side-out Scoring:</strong> Only the serving team can score points. If the receiving team wins the rally, they get the serve (side-out) but no point.';
+            }
+        }
+        
+        // Setup event listeners for game format
         document.querySelectorAll('[data-format]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('[data-format]').forEach(b => b.classList.remove('active'));
@@ -543,6 +593,7 @@
             });
         });
         
+        // Setup event listeners for initial serve
         document.querySelectorAll('[data-serve]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('[data-serve]').forEach(b => b.classList.remove('active'));
@@ -559,11 +610,17 @@
             gameState.team2.name = team2Name;
             gameState.playTo = parseInt(document.getElementById('gameType').value);
             gameState.gameStarted = true;
+            gameState.rallyCount = 0;
             
             // Set initial serving team if selected
             const selectedServe = document.querySelector('[data-serve].active');
             if (selectedServe) {
                 gameState.servingTeam = parseInt(selectedServe.dataset.serve);
+            }
+            
+            // For doubles in side-out scoring, first serve starts with second server
+            if (gameState.gameFormat === 'doubles' && gameState.scoringSystem === 'sideout' && gameState.rallyCount === 0) {
+                gameState.serverNumber = 2;
             }
             
             document.getElementById('team1Display').textContent = team1Name;
@@ -573,28 +630,18 @@
             document.getElementById('gamePlay').classList.remove('hidden');
             
             updateDisplay();
-            addHistoryItem('Game started - Playing to ' + gameState.playTo);
+            const scoringType = gameState.scoringSystem === 'rally' ? 'Rally Scoring' : 'Side-out Scoring';
+            addHistoryItem(`Game started - ${scoringType}, Playing to ${gameState.playTo}`);
         }
         
         function addPoint(team) {
             const previousState = JSON.parse(JSON.stringify(gameState));
+            gameState.rallyCount++;
             
-            if (team === 1) {
-                if (gameState.servingTeam === 1) {
-                    gameState.team1.score++;
-                    addHistoryItem(`${gameState.team1.name} scores! (${gameState.team1.score}-${gameState.team2.score})`);
-                } else {
-                    handleSideOut();
-                    addHistoryItem(`Side out - ${gameState.team1.name} wins rally`);
-                }
+            if (gameState.scoringSystem === 'rally') {
+                handleRallyScoring(team);
             } else {
-                if (gameState.servingTeam === 2) {
-                    gameState.team2.score++;
-                    addHistoryItem(`${gameState.team2.name} scores! (${gameState.team1.score}-${gameState.team2.score})`);
-                } else {
-                    handleSideOut();
-                    addHistoryItem(`Side out - ${gameState.team2.name} wins rally`);
-                }
+                handleSideoutScoring(team);
             }
             
             gameState.history.push(previousState);
@@ -602,15 +649,73 @@
             checkWinner();
         }
         
+        function handleRallyScoring(winningTeam) {
+            // In rally scoring, the team that wins the rally gets a point
+            if (winningTeam === 1) {
+                gameState.team1.score++;
+                addHistoryItem(`${gameState.team1.name} wins rally and scores! (${gameState.team1.score}-${gameState.team2.score})`);
+                
+                // If team 1 won but team 2 was serving, change serve
+                if (gameState.servingTeam === 2) {
+                    gameState.servingTeam = 1;
+                    gameState.serverNumber = 1;
+                    addHistoryItem(`Service changes to ${gameState.team1.name}`);
+                }
+            } else {
+                gameState.team2.score++;
+                addHistoryItem(`${gameState.team2.name} wins rally and scores! (${gameState.team1.score}-${gameState.team2.score})`);
+                
+                // If team 2 won but team 1 was serving, change serve
+                if (gameState.servingTeam === 1) {
+                    gameState.servingTeam = 2;
+                    gameState.serverNumber = 1;
+                    addHistoryItem(`Service changes to ${gameState.team2.name}`);
+                }
+            }
+        }
+        
+        function handleSideoutScoring(winningTeam) {
+            // In side-out scoring, only the serving team can score
+            if (winningTeam === 1) {
+                if (gameState.servingTeam === 1) {
+                    // Team 1 serving and won the rally - they score
+                    gameState.team1.score++;
+                    addHistoryItem(`${gameState.team1.name} scores! (${gameState.team1.score}-${gameState.team2.score})`);
+                } else {
+                    // Team 1 won but Team 2 was serving - side out
+                    handleSideOut();
+                    addHistoryItem(`Side out - ${gameState.team1.name} wins rally, gets serve`);
+                }
+            } else {
+                if (gameState.servingTeam === 2) {
+                    // Team 2 serving and won the rally - they score
+                    gameState.team2.score++;
+                    addHistoryItem(`${gameState.team2.name} scores! (${gameState.team1.score}-${gameState.team2.score})`);
+                } else {
+                    // Team 2 won but Team 1 was serving - side out
+                    handleSideOut();
+                    addHistoryItem(`Side out - ${gameState.team2.name} wins rally, gets serve`);
+                }
+            }
+        }
+        
         function handleSideOut() {
             if (gameState.gameFormat === 'doubles') {
-                if (gameState.servingTeam === 1 && gameState.serverNumber === 1) {
+                // In doubles, both players on a team serve before side out (except first serve of game)
+                if (gameState.servingTeam === 1 && gameState.serverNumber === 1 && 
+                    !(gameState.rallyCount <= 1 && gameState.scoringSystem === 'sideout')) {
+                    // First server of Team 1 lost, switch to second server
+                    gameState.serverNumber = 2;
+                } else if (gameState.servingTeam === 2 && gameState.serverNumber === 1) {
+                    // First server of Team 2 lost, switch to second server
                     gameState.serverNumber = 2;
                 } else {
+                    // Second server lost or special first serve case, switch teams
                     gameState.servingTeam = gameState.servingTeam === 1 ? 2 : 1;
                     gameState.serverNumber = 1;
                 }
             } else {
+                // Singles - just switch serving team
                 gameState.servingTeam = gameState.servingTeam === 1 ? 2 : 1;
             }
         }
@@ -646,18 +751,38 @@
             if (gameState.gameFormat === 'doubles') {
                 serverText += ` - Server ${gameState.serverNumber}`;
             }
+            if (gameState.scoringSystem === 'rally') {
+                serverText += ' (Rally Scoring)';
+            }
             document.getElementById('serverInfo').textContent = serverText;
         }
         
         function checkWinner() {
             const team1Score = gameState.team1.score;
             const team2Score = gameState.team2.score;
-            const winBy2 = Math.abs(team1Score - team2Score) >= 2;
             
-            if ((team1Score >= gameState.playTo || team2Score >= gameState.playTo) && winBy2) {
-                const winner = team1Score > team2Score ? gameState.team1 : gameState.team2;
-                showWinner(winner);
+            // In rally scoring, check for freeze at playTo - 1
+            if (gameState.scoringSystem === 'rally') {
+                const freezePoint = gameState.playTo - 1;
+                if (team1Score === freezePoint && team2Score === freezePoint) {
+                    // At freeze point in rally scoring, must win by 2
+                    if (Math.abs(team1Score - team2Score) >= 2) {
+                        determineWinner(team1Score, team2Score);
+                    }
+                    return;
+                }
             }
+            
+            // Standard winning condition
+            const winBy2 = Math.abs(team1Score - team2Score) >= 2;
+            if ((team1Score >= gameState.playTo || team2Score >= gameState.playTo) && winBy2) {
+                determineWinner(team1Score, team2Score);
+            }
+        }
+        
+        function determineWinner(team1Score, team2Score) {
+            const winner = team1Score > team2Score ? gameState.team1 : gameState.team2;
+            showWinner(winner);
         }
         
         function showWinner(winner) {
@@ -679,30 +804,35 @@
                 servingTeam: 1,
                 serverNumber: 1,
                 gameFormat: 'singles',
+                scoringSystem: 'sideout',
                 playTo: 11,
                 history: [],
-                gameStarted: false
+                gameStarted: false,
+                rallyCount: 0
             };
             
             document.getElementById('gameSetup').classList.remove('hidden');
             document.getElementById('gamePlay').classList.add('hidden');
             document.getElementById('historyList').innerHTML = '';
+            
+            // Reset UI to default selections
+            document.querySelectorAll('[data-scoring]').forEach(b => b.classList.remove('active'));
+            document.querySelector('[data-scoring="sideout"]').classList.add('active');
+            updateScoringInfo();
         }
         
         function addHistoryItem(text) {
-            requestAnimationFrame(() => {
-                const historyList = document.getElementById('historyList');
-                const item = document.createElement('div');
-                item.className = 'history-item';
-                const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                item.textContent = `${time} - ${text}`;
-                historyList.insertBefore(item, historyList.firstChild);
-                
-                // Keep only last 10 items
-                while (historyList.children.length > 10) {
-                    historyList.removeChild(historyList.lastChild);
-                }
-            });
+            const historyList = document.getElementById('historyList');
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            item.textContent = `${time} - ${text}`;
+            historyList.insertBefore(item, historyList.firstChild);
+            
+            // Keep only last 10 items
+            while (historyList.children.length > 10) {
+                historyList.removeChild(historyList.lastChild);
+            }
         }
     </script>
 </body>
