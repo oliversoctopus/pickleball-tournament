@@ -564,7 +564,14 @@
             document.querySelectorAll('.mode-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target?.classList.add('active');
+            
+            // Add active class only if event.target exists
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // If no event, manually set the active button
+                document.querySelector(`.mode-button[onclick*="${mode}"]`)?.classList.add('active');
+            }
             
             // Update sections
             document.querySelectorAll('.tournament-section').forEach(section => {
