@@ -4,8 +4,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const RoundRobinTournament = require('./roundRobin');
-
+const RoundRobinTournament = require('./roundRobin'); // Add this import
 
 const app = express();
 const server = http.createServer(app);
@@ -30,7 +29,7 @@ app.use(express.json());
 // In-memory storage (replace with database in production)
 const tournaments = new Map();
 const games = new Map();
-const roundRobinTournaments = new Map();
+const roundRobinTournaments = new Map(); // Add this storage
 
 // Tournament structure
 class Tournament {
@@ -341,98 +340,7 @@ app.post('/api/games/:id/switch-serve', (req, res) => {
   res.json(gameState);
 });
 
-// WebSocket handling
-io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
-
-  // Join a tournament room as viewer
-  socket.on('joinTournament', (tournamentId) => {
-    const tournament = tournaments.get(tournamentId);
-    if (tournament) {
-      socket.join(`tournament-${tournamentId}`);
-      tournament.viewers.add(socket.id);
-      
-      // Send current tournament state
-      socket.emit('tournamentState', {
-        ...tournament,
-        viewers: Array.from(tournament.viewers),
-        games: tournament.games.map(gameId => games.get(gameId)?.getGameState())
-      });
-      
-      // Notify others of new viewer
-      socket.to(`tournament-${tournamentId}`).emit('viewerJoined', {
-        viewerCount: tournament.viewers.size
-      });
-      
-      console.log(`Socket ${socket.id} joined tournament ${tournamentId}`);
-    }
-  });
-
-  // Join a specific game room
-  socket.on('joinGame', (gameId) => {
-    const game = games.get(gameId);
-    if (game) {
-      socket.join(`game-${gameId}`);
-      socket.emit('gameState', game.getGameState());
-      console.log(`Socket ${socket.id} joined game ${gameId}`);
-    }
-  });
-
-  // Leave tournament room
-  socket.on('leaveTournament', (tournamentId) => {
-    const tournament = tournaments.get(tournamentId);
-    if (tournament) {
-      socket.leave(`tournament-${tournamentId}`);
-      tournament.viewers.delete(socket.id);
-      
-      // Notify others
-      socket.to(`tournament-${tournamentId}`).emit('viewerLeft', {
-        viewerCount: tournament.viewers.size
-      });
-    }
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-    
-    // Remove from all tournament viewer lists
-    tournaments.forEach((tournament, tournamentId) => {
-      if (tournament.viewers.has(socket.id)) {
-        tournament.viewers.delete(socket.id);
-        io.to(`tournament-${tournamentId}`).emit('viewerLeft', {
-          viewerCount: tournament.viewers.size
-        });
-      }
-    });
-  });
-
-  // Join round-robin tournament room
-  socket.on('joinRoundRobin', (tournamentId) => {
-    const tournament = roundRobinTournaments.get(tournamentId);
-    if (tournament) {
-      socket.join(`round-robin-${tournamentId}`);
-      socket.emit('roundRobinState', tournament.getStandings());
-      console.log(`Socket ${socket.id} joined round-robin tournament ${tournamentId}`);
-    }
-  });
-  
-  // Leave round-robin tournament room
-  socket.on('leaveRoundRobin', (tournamentId) => {
-    socket.leave(`round-robin-${tournamentId}`);
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
-});
-
-// Start server
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// ============= ROUND-ROBIN ENDPOINTS START HERE =============
 
 // Create a round-robin tournament
 app.post('/api/round-robin/tournaments', (req, res) => {
@@ -576,4 +484,99 @@ app.get('/api/round-robin/tournaments/:id/standings', (req, res) => {
     teams: tournament.teams,
     tiedGroups: tournament.findTiedGroups()
   });
+});
+
+// ============= ROUND-ROBIN ENDPOINTS END HERE =============
+
+// WebSocket handling
+io.on('connection', (socket) => {
+  console.log('New client connected:', socket.id);
+
+  // Join a tournament room as viewer
+  socket.on('joinTournament', (tournamentId) => {
+    const tournament = tournaments.get(tournamentId);
+    if (tournament) {
+      socket.join(`tournament-${tournamentId}`);
+      tournament.viewers.add(socket.id);
+      
+      // Send current tournament state
+      socket.emit('tournamentState', {
+        ...tournament,
+        viewers: Array.from(tournament.viewers),
+        games: tournament.games.map(gameId => games.get(gameId)?.getGameState())
+      });
+      
+      // Notify others of new viewer
+      socket.to(`tournament-${tournamentId}`).emit('viewerJoined', {
+        viewerCount: tournament.viewers.size
+      });
+      
+      console.log(`Socket ${socket.id} joined tournament ${tournamentId}`);
+    }
+  });
+
+  // Join a specific game room
+  socket.on('joinGame', (gameId) => {
+    const game = games.get(gameId);
+    if (game) {
+      socket.join(`game-${gameId}`);
+      socket.emit('gameState', game.getGameState());
+      console.log(`Socket ${socket.id} joined game ${gameId}`);
+    }
+  });
+
+  // Leave tournament room
+  socket.on('leaveTournament', (tournamentId) => {
+    const tournament = tournaments.get(tournamentId);
+    if (tournament) {
+      socket.leave(`tournament-${tournamentId}`);
+      tournament.viewers.delete(socket.id);
+      
+      // Notify others
+      socket.to(`tournament-${tournamentId}`).emit('viewerLeft', {
+        viewerCount: tournament.viewers.size
+      });
+    }
+  });
+
+  // Join round-robin tournament room
+  socket.on('joinRoundRobin', (tournamentId) => {
+    const tournament = roundRobinTournaments.get(tournamentId);
+    if (tournament) {
+      socket.join(`round-robin-${tournamentId}`);
+      socket.emit('roundRobinState', tournament.getStandings());
+      console.log(`Socket ${socket.id} joined round-robin tournament ${tournamentId}`);
+    }
+  });
+  
+  // Leave round-robin tournament room
+  socket.on('leaveRoundRobin', (tournamentId) => {
+    socket.leave(`round-robin-${tournamentId}`);
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+    
+    // Remove from all tournament viewer lists
+    tournaments.forEach((tournament, tournamentId) => {
+      if (tournament.viewers.has(socket.id)) {
+        tournament.viewers.delete(socket.id);
+        io.to(`tournament-${tournamentId}`).emit('viewerLeft', {
+          viewerCount: tournament.viewers.size
+        });
+      }
+    });
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date() });
+});
+
+// Start server
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
