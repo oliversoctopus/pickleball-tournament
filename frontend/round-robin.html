@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Round-Robin Tournament</title>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            margin-bottom: 10px;
+        }
+
+        .content-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .setup-section {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .teams-input {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .team-input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .team-input-row input {
+            flex: 1;
+        }
+
+        .team-input-row button {
+            padding: 10px 15px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .standings-table {
+            width: 100%;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .standings-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .standings-table th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+        }
+
+        .standings-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .standings-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .rank-badge {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 700;
+        }
+
+        .rank-badge.gold {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+        }
+
+        .rank-badge.silver {
+            background: linear-gradient(135deg, #C0C0C0, #808080);
+        }
+
+        .rank-badge.bronze {
+            background: linear-gradient(135deg, #CD7F32, #8B4513);
+        }
+
+        .matches-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .match-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+
+        .match-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .match-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .match-status.pending {
+            background: #f0f4ff;
+            color: #667eea;
+        }
+
+        .match-status.in-progress {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .match-status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .match-teams {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .match-team {
+            flex: 1;
+            text-align: center;
+        }
+
+        .match-team-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .match-score {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #667eea;
+        }
+
+        .match-vs {
+            padding: 0 20px;
+            color: #999;
+            font-weight: 600;
+        }
+
+        .match-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .match-actions button {
+            flex: 1;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #666;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .stat-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .stat-badge.positive {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .stat-badge.negative {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .matches-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .standings-table {
+                overflow-x: auto;
+            }
+
+            .standings-table table {
+                min-width: 600px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏓 Round-Robin Tournament</h1>
+            <p>Automated ranking system with FIFA-style tiebreakers</p>
+        </div>
+
+        <div class="content-card">
+            <!-- Setup Section -->
+            <div class="setup-section" id="setupSection">
+                <h2 class="section-title">Create Round-Robin Tournament</h2>
+                
+                <div class="form-group">
+                    <label>Tournament Name</label>
+                    <input type="text" id="tournamentName" placeholder="Enter tournament name">
+                </div>
+
+                <div class="form-group">
+                    <label>Teams (minimum 2)</label>
+                    <div class="teams-input" id="teamsInput">
+                        <div class="team-input-row">
+                            <input type="text" placeholder="Team 1" class="team-name-input">
+                        </div>
+                        <div class="team-input-row">
+                            <input type="text" placeholder="Team 2" class="team-name-input">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="addTeamInput()">+ Add Team</button>
+                </div>
+
+                <button class="btn" onclick="createRoundRobinTournament()">Create Tournament</button>
+            </div>
+
+            <!-- Tournament Dashboard -->
+            <div class="hidden" id="tournamentDashboard">
+                <h2 class="section-title" id="tournamentTitle">Tournament Dashboard</h2>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('standings')">Standings</button>
+                    <button class="tab" onclick="switchTab('matches')">Matches</button>
+                    <button class="tab" onclick="switchTab('schedule')">Schedule</button>
+                </div>
+
+                <!-- Standings Tab -->
+                <div class="tab-content active" id="standingsTab">
+                    <div class="standings-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Team</th>
+                                    <th>GW</th>
+                                    <th>GL</th>
+                                    <th>TPS</th>
+                                    <th>TPC</th>
+                                    <th>TPD</th>
+                                    <th>Win %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="standingsBody">
+                                <!-- Standings will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="margin-top: 20px; padding: 15px; background: #f0f4ff; border-radius: 10px;">
+                        <strong>Ranking Rules:</strong>
+                        <ol style="margin-left: 20px; margin-top: 10px;">
+                            <li>Games Won (GW)</li>
+                            <li>Total Point Difference (TPD)</li>
+                            <li>Total Points Scored (TPS)</li>
+                            <li>Head-to-Head Record</li>
+                            <li>Lottery (if still tied)</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Matches Tab -->
+                <div class="tab-content" id="matchesTab">
+                    <h3 class="section-title">Completed Matches</h3>
+                    <div class="matches-grid" id="completedMatches">
+                        <!-- Completed matches will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Schedule Tab -->
+                <div class="tab-content" id="scheduleTab">
+                    <h3 class="section-title">Upcoming Matches</h3>
+                    <div class="matches-grid" id="upcomingMatches">
+                        <!-- Upcoming matches will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const BACKEND_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3001' 
+            : 'https://pickleball-backend-lhjv.onrender.com';
+
+        let socket;
+        let currentTournament = null;
+        let currentTab = 'standings';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeSocket();
+        });
+
+        // Socket.IO Connection
+        function initializeSocket() {
+            socket = io(BACKEND_URL, {
+                transports: ['websocket', 'polling'],
+                reconnection: true
+            });
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+            });
+
+            socket.on('roundRobinState', (data) => {
+                updateTournamentView(data);
+            });
+
+            socket.on('standingsUpdated', (data) => {
+                updateTournamentView(data);
+            });
+
+            socket.on('matchStarted', (data) => {
+                if (currentTournament && data.tournamentId === currentTournament.id) {
+                    loadTournamentData();
+                }
+            });
+        }
+
+        // Add team input field
+        function addTeamInput() {
+            const teamsInput = document.getElementById('teamsInput');
+            const teamCount = teamsInput.children.length + 1;
+            
+            const row = document.createElement('div');
+            row.className = 'team-input-row';
+            row.innerHTML = `
+                <input type="text" placeholder="Team ${teamCount}" class="team-name-input">
+                <button onclick="removeTeamInput(this)">Remove</button>
+            `;
+            
+            teamsInput.appendChild(row);
+        }
+
+        // Remove team input field
+        function removeTeamInput(button) {
+            button.parentElement.remove();
+        }
+
+        // Create round-robin tournament
+        async function createRoundRobinTournament() {
+            const name = document.getElementById('tournamentName').value;
+            const teamInputs = document.querySelectorAll('.team-name-input');
+            const teams = Array.from(teamInputs)
+                .map(input => input.value.trim())
+                .filter(name => name);
+
+            if (!name.trim()) {
+                alert('Please enter a tournament name');
+                return;
+            }
+
+            if (teams.length < 2) {
+                alert('Please enter at least 2 teams');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/round-robin/tournaments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, teams })
+                });
+
+                if (!response.ok) throw new Error('Failed to create tournament');
+
+                const tournament = await response.json();
+                currentTournament = tournament;
+
+                // Join the tournament room
+                socket.emit('joinRoundRobin', tournament.id);
+
+                // Show dashboard
+                document.getElementById('setupSection').classList.add('hidden');
+                document.getElementById('tournamentDashboard').classList.remove('hidden');
+                document.getElementById('tournamentTitle').textContent = tournament.name;
+
+                // Load tournament data
+                loadTournamentData();
+
+            } catch (error) {
+                console.error('Error creating tournament:', error);
+                alert('Failed to create tournament');
+            }
+        }
+
+        // Load tournament data
+        async function loadTournamentData() {
+            if (!currentTournament) return;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/round-robin/tournaments/${currentTournament.id}`);
+                if (!response.ok) throw new Error('Failed to load tournament');
+
+                const data = await response.json();
+                updateTournamentView(data);
+
+            } catch (error) {
+                console.error('Error loading tournament:', error);
+            }
+        }
+
+        // Update tournament view
+        function updateTournamentView(data) {
+            updateStandings(data.rankings || []);
+            updateMatches(data.matches || []);
+        }
+
+        // Update standings table
+        function updateStandings(rankings) {
+            const tbody = document.getElementById('standingsBody');
+            tbody.innerHTML = '';
+
+            rankings.forEach((team, index) => {
+                const row = document.createElement('tr');
+                
+                let rankClass = '';
+                if (index === 0) rankClass = 'gold';
+                else if (index === 1) rankClass = 'silver';
+                else if (index === 2) rankClass = 'bronze';
+
+                const tpdClass = team.pointDifference >= 0 ? 'positive' : 'negative';
+                const tpdSign = team.pointDifference >= 0 ? '+' : '';
+
+                row.innerHTML = `
+                    <td><span class="rank-badge ${rankClass}">${team.rank}</span></td>
+                    <td><strong>${team.teamName}</strong></td>
+                    <td>${team.gamesWon}</td>
+                    <td>${team.gamesLost}</td>
+                    <td>${team.pointsScored}</td>
+                    <td>${team.pointsConceded}</td>
+                    <td>
+                        <span class="stat-badge ${tpdClass}">
+                            ${tpdSign}${team.pointDifference}
+                        </span>
+                    </td>
+                    <td>${calculateWinPercentage(team.gamesWon, team.gamesLost)}%</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Update matches display
+        function updateMatches(matches) {
+            const upcomingContainer = document.getElementById('upcomingMatches');
+            const completedContainer = document.getElementById('completedMatches');
+            
+            upcomingContainer.innerHTML = '';
+            completedContainer.innerHTML = '';
+
+            matches.forEach(match => {
+                const card = createMatchCard(match);
+                
+                if (match.status === 'completed') {
+                    completedContainer.appendChild(card);
+                } else {
+                    upcomingContainer.appendChild(card);
+                }
+            });
+        }
+
+        // Create match card
+        function createMatchCard(match) {
+            const card = document.createElement('div');
+            card.className = 'match-card';
+
+            const statusClass = match.status;
+            const statusText = match.status === 'in-progress' ? 'In Progress' : 
+                               match.status === 'completed' ? 'Completed' : 'Pending';
+
+            card.innerHTML = `
+                <div class="match-header">
+                    <span class="match-status ${statusClass}">${statusText}</span>
+                    ${match.completedAt ? `<small>${new Date(match.completedAt).toLocaleDateString()}</small>` : ''}
+                </div>
+                <div class="match-teams">
+                    <div class="match-team">
+                        <div class="match-team-name">${match.team1.name}</div>
+                        <div class="match-score">${match.team1.score || '-'}</div>
+                    </div>
+                    <div class="match-vs">VS</div>
+                    <div class="match-team">
+                        <div class="match-team-name">${match.team2.name}</div>
+                        <div class="match-score">${match.team2.score || '-'}</div>
+                    </div>
+                </div>
+                ${match.status === 'pending' ? `
+                    <div class="match-actions">
+                        <button class="btn btn-secondary" onclick="startMatch('${match.id}')">
+                            Start Match
+                        </button>
+                    </div>
+                ` : ''}
+                ${match.status === 'in-progress' && match.gameId ? `
+                    <div class="match-actions">
+                        <button class="btn btn-secondary" onclick="openGame('${match.gameId}')">
+                            Open Scorekeeper
+                        </button>
+                    </div>
+                ` : ''}
+            `;
+
+            return card;
+        }
+
+        // Start a match
+        async function startMatch(matchId) {
+            if (!currentTournament) return;
+
+            try {
+                const response = await fetch(
+                    `${BACKEND_URL}/api/round-robin/tournaments/${currentTournament.id}/matches/${matchId}/start`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            settings: {
+                                playTo: 11,
+                                gameFormat: 'singles',
+                                scoringSystem: 'sideout',
+                                servingTeam: 1,
+                                serverNumber: 1
+                            }
+                        })
+                    }
+                );
+
+                if (!response.ok) throw new Error('Failed to start match');
+
+                const data = await response.json();
+                
+                // Open the game in a new window or iframe
+                if (data.game) {
+                    openGame(data.game.id);
+                }
+
+                // Reload tournament data
+                loadTournamentData();
+
+            } catch (error) {
+                console.error('Error starting match:', error);
+                alert('Failed to start match');
+            }
+        }
+
+        // Open game scorekeeper
+        function openGame(gameId) {
+            // You can open this in a new window or integrate with your existing game UI
+            window.open(`/game.html?id=${gameId}`, '_blank');
+        }
+
+        // Switch tabs
+        function switchTab(tabName) {
+            currentTab = tabName;
+
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+        }
+
+        // Calculate win percentage
+        function calculateWinPercentage(won, lost) {
+            const total = won + lost;
+            if (total === 0) return '0.0';
+            return ((won / total) * 100).toFixed(1);
+        }
+
+        // Poll for updates (backup for WebSocket)
+        setInterval(() => {
+            if (currentTournament) {
+                loadTournamentData();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>

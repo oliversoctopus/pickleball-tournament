@@ -4,6 +4,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const RoundRobinTournament = require('./roundRobin');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +30,7 @@ app.use(express.json());
 // In-memory storage (replace with database in production)
 const tournaments = new Map();
 const games = new Map();
+const roundRobinTournaments = new Map();
 
 // Tournament structure
 class Tournament {
@@ -403,6 +406,21 @@ io.on('connection', (socket) => {
       }
     });
   });
+
+  // Join round-robin tournament room
+  socket.on('joinRoundRobin', (tournamentId) => {
+    const tournament = roundRobinTournaments.get(tournamentId);
+    if (tournament) {
+      socket.join(`round-robin-${tournamentId}`);
+      socket.emit('roundRobinState', tournament.getStandings());
+      console.log(`Socket ${socket.id} joined round-robin tournament ${tournamentId}`);
+    }
+  });
+  
+  // Leave round-robin tournament room
+  socket.on('leaveRoundRobin', (tournamentId) => {
+    socket.leave(`round-robin-${tournamentId}`);
+  });
 });
 
 // Health check endpoint
@@ -414,4 +432,148 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+// Create a round-robin tournament
+app.post('/api/round-robin/tournaments', (req, res) => {
+  const { name, teams, organizerId } = req.body;
+  
+  if (!teams || teams.length < 2) {
+    return res.status(400).json({ error: 'At least 2 teams are required' });
+  }
+  
+  const tournament = new RoundRobinTournament(name, teams, organizerId || uuidv4());
+  roundRobinTournaments.set(tournament.id, tournament);
+  
+  res.json({
+    id: tournament.id,
+    name: tournament.name,
+    teams: tournament.teams,
+    matches: tournament.matches,
+    rankings: tournament.rankings
+  });
+});
+
+// Get round-robin tournament details with standings
+app.get('/api/round-robin/tournaments/:id', (req, res) => {
+  const tournament = roundRobinTournaments.get(req.params.id);
+  
+  if (!tournament) {
+    return res.status(404).json({ error: 'Tournament not found' });
+  }
+  
+  res.json(tournament.getStandings());
+});
+
+// Get all round-robin tournaments
+app.get('/api/round-robin/tournaments', (req, res) => {
+  const tournaments = Array.from(roundRobinTournaments.values()).map(t => ({
+    id: t.id,
+    name: t.name,
+    status: t.status,
+    teamsCount: t.teams.length,
+    completedMatches: t.matches.filter(m => m.status === 'completed').length,
+    totalMatches: t.matches.length,
+    createdAt: t.createdAt
+  }));
+  
+  res.json(tournaments);
+});
+
+// Start a match in round-robin tournament
+app.post('/api/round-robin/tournaments/:tournamentId/matches/:matchId/start', (req, res) => {
+  const { tournamentId, matchId } = req.params;
+  const { settings } = req.body;
+  
+  const tournament = roundRobinTournaments.get(tournamentId);
+  if (!tournament) {
+    return res.status(404).json({ error: 'Tournament not found' });
+  }
+  
+  const match = tournament.matches.find(m => m.id === matchId);
+  if (!match) {
+    return res.status(404).json({ error: 'Match not found' });
+  }
+  
+  if (match.status !== 'pending') {
+    return res.status(400).json({ error: 'Match already started or completed' });
+  }
+  
+  // Create a game using your existing Game class
+  const game = new Game(
+    tournamentId,
+    match.team1.name,
+    match.team2.name,
+    settings || {
+      playTo: 11,
+      gameFormat: 'singles',
+      scoringSystem: 'sideout',
+      servingTeam: 1,
+      serverNumber: 1
+    }
+  );
+  
+  games.set(game.id, game);
+  match.gameId = game.id;
+  match.status = 'in-progress';
+  
+  // Emit to WebSocket
+  io.to(`round-robin-${tournamentId}`).emit('matchStarted', {
+    tournamentId,
+    matchId,
+    gameId: game.id,
+    match
+  });
+  
+  res.json({
+    match,
+    game: game.getGameState()
+  });
+});
+
+// Complete a match and update tournament standings
+app.post('/api/round-robin/tournaments/:tournamentId/matches/:matchId/complete', (req, res) => {
+  const { tournamentId, matchId } = req.params;
+  
+  const tournament = roundRobinTournaments.get(tournamentId);
+  if (!tournament) {
+    return res.status(404).json({ error: 'Tournament not found' });
+  }
+  
+  const match = tournament.matches.find(m => m.id === matchId);
+  if (!match || !match.gameId) {
+    return res.status(404).json({ error: 'Match not found or not started' });
+  }
+  
+  const game = games.get(match.gameId);
+  if (!game) {
+    return res.status(404).json({ error: 'Game not found' });
+  }
+  
+  if (game.status !== 'completed') {
+    return res.status(400).json({ error: 'Game is not completed yet' });
+  }
+  
+  // Update tournament with match result
+  tournament.updateMatchResult(matchId, game.team1.score, game.team2.score);
+  
+  // Emit updated standings
+  io.to(`round-robin-${tournamentId}`).emit('standingsUpdated', tournament.getStandings());
+  
+  res.json(tournament.getStandings());
+});
+
+// Get current standings/rankings
+app.get('/api/round-robin/tournaments/:id/standings', (req, res) => {
+  const tournament = roundRobinTournaments.get(req.params.id);
+  
+  if (!tournament) {
+    return res.status(404).json({ error: 'Tournament not found' });
+  }
+  
+  res.json({
+    rankings: tournament.rankings,
+    teams: tournament.teams,
+    tiedGroups: tournament.findTiedGroups()
+  });
 });
